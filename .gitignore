@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+venv/
+env/
+
+# AWS SAM
+.aws-sam/
+samconfig.toml
+packaged.yaml
+
+# Entorno
+.env
+env.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
