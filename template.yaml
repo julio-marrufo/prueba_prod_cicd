@@ -69,7 +69,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub '${AWS::StackName}-${Environment}'
-      CodeUri: prueba-ci-cd/ #aqui va el nombre de la carpeta que contenga app.py
+      CodeUri: prueba_ci_cd/ #aqui va el nombre de la carpeta que contenga app.py
       Handler: app.lambda_handler
       Runtime: python3.11
       Architectures: [x86_64]

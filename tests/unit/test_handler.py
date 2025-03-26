@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from prueba-ci-cd import app
+from prueba_ci_cd import app
 
 
 @pytest.fixture()
