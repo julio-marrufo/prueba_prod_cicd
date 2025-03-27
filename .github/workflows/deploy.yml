@@ -101,40 +101,59 @@ jobs:
         if: github.event_name == 'push'
         run: |
           sam build
-
-      - name: Deploy with SAM (HTTP API)
-        if: github.event_name == 'push' && vars.API_GATEWAY_TYPE == 'http'
-        run: |
-          sam deploy --no-confirm-changeset --no-fail-on-empty-changeset \
-            --stack-name ${{ vars.STACK_NAME }}-${{ vars.ENVIRONMENT }} \
-            --resolve-s3 \
-            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
-            --parameter-overrides Environment=${{ vars.ENVIRONMENT }} MongoDbUri=${{ secrets.MONGODB_URI }} DatabaseName=${{ vars.DATABASE_NAME }} CollectionName=${{ vars.COLLECTION_NAME }} ApiGatewayType=${{ vars.API_GATEWAY_TYPE }} ExistingApiId=${{ vars.EXISTING_API_ID }} ExistingApiStageName=${{ vars.EXISTING_API_STAGE_NAME }} ExistingVpcId=${{ vars.EXISTING_VPC_ID }} ExistingSubnetIds=${{ vars.EXISTING_SUBNET_IDS }} ExistingSecurityGroupId=${{ vars.EXISTING_SECURITY_GROUP_ID }} ExistingLayerArn=${{ vars.EXISTING_LAYER_ARN }}
-
-      - name: Deploy with SAM (REST API)
-        if: github.event_name == 'push' && vars.API_GATEWAY_TYPE == 'rest'
-        run: |
-          echo "Deploying with parameters:"
-          echo "ExistingApiId: ${{ vars.EXISTING_API_ID }}"
-          echo "ExistingVpcId: ${{ vars.EXISTING_VPC_ID }}"
-          echo "ExistingSubnetIds: ${{ vars.EXISTING_SUBNET_IDS }}"
-          echo "ExistingSecurityGroupId: ${{ vars.EXISTING_SECURITY_GROUP_ID }}"
-          echo "ExistingLayerArn: ${{ vars.EXISTING_LAYER_ARN }}"
-
-          sam deploy --no-confirm-changeset --no-fail-on-empty-changeset \
-            --stack-name ${{ vars.STACK_NAME }}-${{ vars.ENVIRONMENT }} \
-            --resolve-s3 \
-            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
-            --parameter-overrides \
-              Environment=${{ vars.ENVIRONMENT }} \
-              MongoDbUri=${{ secrets.MONGODB_URI }} \
-              DatabaseName=${{ vars.DATABASE_NAME }} \
-              CollectionName=${{ vars.COLLECTION_NAME }} \
-              ApiGatewayType=${{ vars.API_GATEWAY_TYPE }} \
-              ExistingApiId=${{ vars.EXISTING_API_ID }} \
-              ExistingApiStageName=${{ vars.EXISTING_API_STAGE_NAME }} \
-              ExistingVpcId=${{ vars.EXISTING_VPC_ID }} \
-              ExistingSubnetIds="${{ vars.EXISTING_SUBNET_IDS }}" \
-              ExistingSecurityGroupId=${{ vars.EXISTING_SECURITY_GROUP_ID }} \
-              ExistingLayerArn=${{ vars.EXISTING_LAYER_ARN }} \
-              RootResourceId=${{ vars.ROOT_RESOURCE_ID }}
+          
+          # NUEVO: Crear el archivo de parámetros para SAM
+          - name: Create parameters file for SAM
+            if: github.event_name == 'push'
+            run: |
+              cat > samconfig.parameters.json << EOF
+              {
+                "Parameters": {
+                  "Environment": "${{ vars.ENVIRONMENT }}",
+                  "MongoDbUri": "${{ secrets.MONGODB_URI }}",
+                  "DatabaseName": "${{ vars.DATABASE_NAME }}",
+                  "CollectionName": "${{ vars.COLLECTION_NAME }}",
+                  "ApiGatewayType": "${{ vars.API_GATEWAY_TYPE }}",
+                  "ExistingApiId": "${{ vars.EXISTING_API_ID }}",
+                  "ExistingApiStageName": "${{ vars.EXISTING_API_STAGE_NAME }}",
+                  "ExistingVpcId": "${{ vars.EXISTING_VPC_ID }}",
+                  "ExistingSubnetIds": "${{ vars.EXISTING_SUBNET_IDS }}",
+                  "ExistingSecurityGroupId": "${{ vars.EXISTING_SECURITY_GROUP_ID }}",
+                  "ExistingLayerArn": "${{ vars.EXISTING_LAYER_ARN }}",
+                  "RootResourceId": "${{ vars.ROOT_RESOURCE_ID || '' }}"
+                }
+              }
+              EOF
+              echo "Contenido del archivo de parámetros:"
+              cat samconfig.parameters.json
+          
+          # REEMPLAZAR: Usar un solo paso de despliegue para ambos tipos de API
+          - name: Deploy with SAM using parameters file
+            if: github.event_name == 'push'
+            run: |
+              echo "Desplegando stack con archivo de parámetros"
+              sam deploy --no-confirm-changeset --no-fail-on-empty-changeset \
+                --stack-name ${{ vars.STACK_NAME }}-${{ vars.ENVIRONMENT }} \
+                --resolve-s3 \
+                --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+                --parameter-overrides file://samconfig.parameters.json
+          
+          # OPCIONAL: Añadir verificación post-despliegue
+          - name: Verify deployment
+            if: github.event_name == 'push'
+            run: |
+              echo "Verificando el despliegue del stack"
+              STACK_STATUS=$(aws cloudformation describe-stacks --stack-name ${{ vars.STACK_NAME }}-${{ vars.ENVIRONMENT }} --query "Stacks[0].StackStatus" --output text)
+              echo "Estado final del stack: $STACK_STATUS"
+          
+              if [[ $STACK_STATUS == "CREATE_COMPLETE" || $STACK_STATUS == "UPDATE_COMPLETE" ]]; then
+                echo "✅ Despliegue exitoso"
+                # Obtener la URL del endpoint de salida si está disponible
+                API_URL=$(aws cloudformation describe-stacks --stack-name ${{ vars.STACK_NAME }}-${{ vars.ENVIRONMENT }} --query "Stacks[0].Outputs[?OutputKey=='ApiEndpoint'].OutputValue" --output text)
+                if [[ ! -z "$API_URL" ]]; then
+                  echo "🔗 API URL: $API_URL"
+                fi
+              else
+                echo "❌ Despliegue fallido o en progreso"
+                exit 1
+              fi
