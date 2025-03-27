@@ -179,31 +179,23 @@ Resources:
   ApiGatewayRestPermission:
     Type: AWS::Lambda::Permission
     Condition: IsRestApi
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       Action: lambda:InvokeFunction
       FunctionName: !Ref PruebaCiCdFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ExistingApiId}/*/*/*'
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ExistingApiId}/${ExistingApiStageName}/GET/hello'
 
-  # Despliegue de API REST para aplicar cambios (opcional)
+  # Despliegue de API REST para aplicar cambios
   ApiGatewayDeployment:
     Type: AWS::ApiGateway::Deployment
     Condition: IsRestApi
     DependsOn: ApiGatewayRestMethod
     Properties:
       RestApiId: !Ref ExistingApiId
-      Description: !Sub 'Deployment for ${AWS::StackName}'
-
-  # Asociación de etapa para API REST (nuevo recurso)
-  ApiGatewayStageAssociation:
-    Type: AWS::ApiGateway::Stage
-    Condition: IsRestApi
-    DependsOn: ApiGatewayDeployment
-    Properties:
-      RestApiId: !Ref ExistingApiId
       StageName: !Ref ExistingApiStageName
-      DeploymentId: !Ref ApiGatewayDeployment
-      Description: !Sub 'Stage for ${AWS::StackName}'
+      Description: !Sub 'Deployment for ${AWS::StackName}'
 
 Conditions:
   IsHttpApi: !Equals [!Ref ApiGatewayType, "http"]
