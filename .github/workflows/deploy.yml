@@ -33,7 +33,7 @@ jobs:
           echo "EXISTING_SUBNET_IDS: ${{ vars.EXISTING_SUBNET_IDS }}"
           echo "EXISTING_SECURITY_GROUP_ID: ${{ vars.EXISTING_SECURITY_GROUP_ID }}"
           echo "EXISTING_LAYER_ARN: ${{ vars.EXISTING_LAYER_ARN }}"
-          echo "ROOT_RESOURCE_ID: ${{ steps.get-root-id.outputs.ROOT_RESOURCE_ID }}"
+          echo "ROOT_RESOURCE_ID: ${{ vars.ROOT_RESOURCE_ID }}"
           
           echo "GitHub Context Information:"
           echo "Repository: ${{ github.repository }}"
@@ -109,8 +109,7 @@ jobs:
             --stack-name ${{ vars.STACK_NAME }}-${{ vars.ENVIRONMENT }} \
             --resolve-s3 \
             --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
-            --parameter-overrides \
-              Environment=${{ vars.ENVIRONMENT }} MongoDbUri=${{ secrets.MONGODB_URI }} DatabaseName=${{ vars.DATABASE_NAME }} CollectionName=${{ vars.COLLECTION_NAME }} ApiGatewayType=${{ vars.API_GATEWAY_TYPE }} ExistingApiId=${{ vars.EXISTING_API_ID }} ExistingApiStageName=${{ vars.EXISTING_API_STAGE_NAME }} ExistingVpcId=${{ vars.EXISTING_VPC_ID }} ExistingSubnetIds=${{ vars.EXISTING_SUBNET_IDS }} ExistingSecurityGroupId=${{ vars.EXISTING_SECURITY_GROUP_ID }} ExistingLayerArn=${{ vars.EXISTING_LAYER_ARN }}
+            --parameter-overrides Environment=${{ vars.ENVIRONMENT }} MongoDbUri=${{ secrets.MONGODB_URI }} DatabaseName=${{ vars.DATABASE_NAME }} CollectionName=${{ vars.COLLECTION_NAME }} ApiGatewayType=${{ vars.API_GATEWAY_TYPE }} ExistingApiId=${{ vars.EXISTING_API_ID }} ExistingApiStageName=${{ vars.EXISTING_API_STAGE_NAME }} ExistingVpcId=${{ vars.EXISTING_VPC_ID }} ExistingSubnetIds=${{ vars.EXISTING_SUBNET_IDS }} ExistingSecurityGroupId=${{ vars.EXISTING_SECURITY_GROUP_ID }} ExistingLayerArn=${{ vars.EXISTING_LAYER_ARN }}
 
       - name: Deploy with SAM (REST API)
         if: github.event_name == 'push' && vars.API_GATEWAY_TYPE == 'rest'
@@ -119,4 +118,4 @@ jobs:
             --stack-name ${{ vars.STACK_NAME }}-${{ vars.ENVIRONMENT }} \
             --resolve-s3 \
             --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
-            --parameter-overrides Environment=${{ vars.ENVIRONMENT }} MongoDbUri=${{ secrets.MONGODB_URI }} DatabaseName=${{ vars.DATABASE_NAME }} CollectionName=${{ vars.COLLECTION_NAME }} ApiGatewayType=${{ vars.API_GATEWAY_TYPE }} ExistingApiId=${{ vars.EXISTING_API_ID }} ExistingApiStageName=${{ vars.EXISTING_API_STAGE_NAME }} ExistingVpcId=${{ vars.EXISTING_VPC_ID }} ExistingSubnetIds=${{ vars.EXISTING_SUBNET_IDS }} ExistingSecurityGroupId=${{ vars.EXISTING_SECURITY_GROUP_ID }} ExistingLayerArn=${{ vars.EXISTING_LAYER_ARN }} RootResourceId=${{ steps.get-root-id.outputs.ROOT_RESOURCE_ID }}
+            --parameter-overrides Environment=${{ vars.ENVIRONMENT }} MongoDbUri=${{ secrets.MONGODB_URI }} DatabaseName=${{ vars.DATABASE_NAME }} CollectionName=${{ vars.COLLECTION_NAME }} ApiGatewayType=${{ vars.API_GATEWAY_TYPE }} ExistingApiId=${{ vars.EXISTING_API_ID }} ExistingApiStageName=${{ vars.EXISTING_API_STAGE_NAME }} ExistingVpcId=${{ vars.EXISTING_VPC_ID }} ExistingSubnetIds=${{ vars.EXISTING_SUBNET_IDS }} ExistingSecurityGroupId=${{ vars.EXISTING_SECURITY_GROUP_ID }} ExistingLayerArn=${{ vars.EXISTING_LAYER_ARN }} RootResourceId=${{ vars.ROOT_RESOURCE_ID }}
