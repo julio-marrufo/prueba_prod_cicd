@@ -1,16 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: >
-  Aplicación Serverless que utiliza infraestructura AWS existente
-
-Globals:
-  Function:
-    Timeout: 10
-    MemorySize: 256
-    Tracing: Active
-    Environment:
-      Variables:
-        LOG_LEVEL: INFO
+Description: Aplicación Serverless que se integra con infraestructura existente
 
 Parameters:
   Environment:
@@ -65,28 +55,11 @@ Parameters:
     Type: String
     Description: ARN de la capa (layer) existente con las dependencias
 
-Mappings:
-  EnvironmentMap:
-    dev:
-      LogLevel: DEBUG
-      MemorySize: 128
-      Timeout: 10
-    test:
-      LogLevel: DEBUG
-      MemorySize: 128
-      Timeout: 10
-    stage:
-      LogLevel: INFO
-      MemorySize: 256
-      Timeout: 15
-    prod:
-      LogLevel: WARN
-      MemorySize: 512
-      Timeout: 30
-
-Conditions:
-  IsRestApi: !Equals [!Ref ApiGatewayType, "rest"]
-  IsHttpApi: !Equals [!Ref ApiGatewayType, "http"]
+  # Nuevo parámetro para el rootresourceid
+  RootResourceId:
+    Type: String
+    Default: ""
+    Description: ID del recurso raíz de la API Gateway (solo para REST API)
 
 Resources:
   # Secreto para MongoDB
@@ -97,24 +70,24 @@ Resources:
       Description: Credenciales de MongoDB
       SecretString: !Sub '{"uri": "${MongoDbUri}"}'
 
-  # Función Lambda
-  HelloWorldFunction:
+  # Función Lambda (sin eventos API Gateway)
+  PruebaCiCdFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub '${AWS::StackName}-${Environment}'
-      CodeUri: prueba-ci-cd/
+      CodeUri: prueba_ci_cd/ #aqui va el nombre de la carpeta que contenga app.py
       Handler: app.lambda_handler
       Runtime: python3.11
       Architectures: [x86_64]
-      MemorySize: !FindInMap [EnvironmentMap, !Ref Environment, MemorySize]
-      Timeout: !FindInMap [EnvironmentMap, !Ref Environment, Timeout]
+      MemorySize: 256
+      Timeout: 10
       Environment:
         Variables:
           MONGODB_SECRET_ARN: !Ref MongoDBSecret
           DB_NAME: !Ref DatabaseName
           COLLECTION_NAME: !Ref CollectionName
           ENVIRONMENT: !Ref Environment
-          LOG_LEVEL: !FindInMap [EnvironmentMap, !Ref Environment, LogLevel]
+          LOG_LEVEL: INFO
       VpcConfig:
         SecurityGroupIds:
           - !Ref ExistingSecurityGroupId
@@ -137,47 +110,107 @@ Resources:
               Resource: !Ref MongoDBSecret
 
   # Grupo de logs para Lambda
-  HelloWorldFunctionLogs:
+  PruebaCiCdFunctionLogs:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub '/aws/lambda/${HelloWorldFunction}'
+      LogGroupName: !Sub '/aws/lambda/${PruebaCiCdFunction}'
       RetentionInDays: 7
 
   # Integración con API Gateway HTTP existente
   ApiGatewayIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Condition: IsHttpApi
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       ApiId: !Ref ExistingApiId
       IntegrationType: AWS_PROXY
-      IntegrationUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${HelloWorldFunction.Arn}/invocations'
+      IntegrationUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PruebaCiCdFunction.Arn}/invocations'
       PayloadFormatVersion: '2.0'
       IntegrationMethod: POST
 
   # Ruta para API Gateway HTTP
-  # Usamos una ruta única para evitar conflictos con rutas existentes
   ApiGatewayRoute:
     Type: AWS::ApiGatewayV2::Route
     Condition: IsHttpApi
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       ApiId: !Ref ExistingApiId
-      RouteKey: 'GET /hello-new'
+      RouteKey: 'GET /hello'
       Target: !Sub 'integrations/${ApiGatewayIntegration}'
 
-  # Permiso para que API Gateway invoque la función Lambda
-  ApiGatewayPermission:
+  # Permiso para que API Gateway HTTP invoque la función Lambda
+  ApiGatewayHttpPermission:
     Type: AWS::Lambda::Permission
+    Condition: IsHttpApi
     Properties:
       Action: lambda:InvokeFunction
-      FunctionName: !Ref HelloWorldFunction
+      FunctionName: !Ref PruebaCiCdFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ExistingApiId}/*/*/hello-new'
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ExistingApiId}/*/*/hello'
+
+  # RECURSOS PARA API REST
+
+  # Recurso /hello para API REST
+  ApiGatewayRestResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: IsRestApi
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RestApiId: !Ref ExistingApiId
+      ParentId: !Ref RootResourceId
+      PathPart: 'hello'
+
+  # Método GET para el recurso /hello en API REST
+  ApiGatewayRestMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: IsRestApi
+    Properties:
+      RestApiId: !Ref ExistingApiId
+      ResourceId: !Ref ApiGatewayRestResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PruebaCiCdFunction.Arn}/invocations'
+
+  # Permiso para que API Gateway REST invoque la función Lambda
+  ApiGatewayRestPermission:
+    Type: AWS::Lambda::Permission
+    Condition: IsRestApi
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref PruebaCiCdFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ExistingApiId}/${ExistingApiStageName}/GET/hello'
+
+  # Despliegue de API REST para aplicar cambios
+  ApiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    Condition: IsRestApi
+    DependsOn: ApiGatewayRestMethod
+    Properties:
+      RestApiId: !Ref ExistingApiId
+      StageName: !Ref ExistingApiStageName
+      Description: !Sub 'Deployment for ${AWS::StackName}'
+
+Conditions:
+  IsHttpApi: !Equals [!Ref ApiGatewayType, "http"]
+  IsRestApi: !Equals [!Ref ApiGatewayType, "rest"]
 
 Outputs:
-  HelloWorldFunction:
+  PruebaCiCdFunction:
     Description: ARN de la función Lambda
-    Value: !GetAtt HelloWorldFunction.Arn
+    Value: !GetAtt PruebaCiCdFunction.Arn
 
   ApiEndpoint:
     Description: URL del endpoint
-    Value: !Sub 'https://${ExistingApiId}.execute-api.${AWS::Region}.amazonaws.com/${ExistingApiStageName}/hello-new'
+    Value: !If
+      - IsHttpApi
+      - !Sub 'https://${ExistingApiId}.execute-api.${AWS::Region}.amazonaws.com/${ExistingApiStageName}/hello'
+      - !Sub 'https://${ExistingApiId}.execute-api.${AWS::Region}.amazonaws.com/${ExistingApiStageName}/hello'

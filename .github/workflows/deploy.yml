@@ -1,0 +1,153 @@
+name: Deploy Serverless Application
+
+on:
+  push:
+    branches: [main, master, develop, 'release/*']
+  pull_request:
+    branches: [main, master, develop]
+
+permissions:
+  id-token: write  # Necesario para OIDC
+  contents: read   # Necesario para checkout
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref == 'refs/heads/master' && 'prod' || github.ref == 'refs/heads/develop' && 'dev' || startsWith(github.ref, 'refs/heads/release/') && 'stage' || 'test' }}
+
+    steps:
+      # Debug para verificar la configuración
+      - name: Debug Environment Variables
+        run: |
+          echo "GitHub Variables:"
+          echo "AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}"
+          echo "AWS_REGION: ${{ vars.AWS_REGION }}"
+          echo "STACK_NAME: ${{ vars.STACK_NAME }}"
+          echo "Environment: ${{ vars.ENVIRONMENT }}"
+          echo "DATABASE_NAME: ${{ vars.DATABASE_NAME }}"
+          echo "COLLECTION_NAME: ${{ vars.COLLECTION_NAME }}"
+          echo "API_GATEWAY_TYPE: ${{ vars.API_GATEWAY_TYPE }}"
+          echo "EXISTING_API_ID: ${{ vars.EXISTING_API_ID }}"
+          echo "EXISTING_API_STAGE_NAME: ${{ vars.EXISTING_API_STAGE_NAME }}"
+          echo "EXISTING_VPC_ID: ${{ vars.EXISTING_VPC_ID }}"
+          echo "EXISTING_SUBNET_IDS: ${{ vars.EXISTING_SUBNET_IDS }}"
+          echo "EXISTING_SECURITY_GROUP_ID: ${{ vars.EXISTING_SECURITY_GROUP_ID }}"
+          echo "EXISTING_LAYER_ARN: ${{ vars.EXISTING_LAYER_ARN }}"
+          echo "ROOT_RESOURCE_ID: ${{ vars.ROOT_RESOURCE_ID }}"
+          
+          echo "GitHub Context Information:"
+          echo "Repository: ${{ github.repository }}"
+          echo "Branch: ${{ github.ref }}"
+          echo "Workflow: ${{ github.workflow }}"
+
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-mock boto3
+          pip install -r prueba_ci_cd/requirements.txt
+
+      - name: Run tests
+        run: |
+          python -m pytest tests/unit/
+
+      - name: Configure AWS credentials with OIDC
+        if: github.event_name == 'push'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # Paso para obtener el Root Resource ID si se utiliza API REST
+      - name: Get API Gateway Root Resource ID
+        if: github.event_name == 'push' && vars.API_GATEWAY_TYPE == 'rest'
+        id: get-root-id
+        run: |
+          ROOT_ID=$(aws apigateway get-resources --rest-api-id ${{ vars.EXISTING_API_ID }} --query "items[?path=='/'].id" --output text)
+          echo "ROOT_RESOURCE_ID=$ROOT_ID" >> $GITHUB_OUTPUT
+          echo "Obtained Root Resource ID: $ROOT_ID"
+
+      - name: Check and delete failed stack if needed
+        if: github.event_name == 'push'
+        run: |
+          # Check if stack exists and is in a failed state
+          STACK_STATUS=$(aws cloudformation describe-stacks --stack-name ${{ vars.STACK_NAME }}-${{ vars.ENVIRONMENT }} --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "STACK_NOT_FOUND")
+          
+          # If stack is in a failed state, delete it
+          if [[ $STACK_STATUS == *"FAILED"* || $STACK_STATUS == *"ROLLBACK"* ]]; then
+            echo "Stack is in $STACK_STATUS state. Deleting..."
+            aws cloudformation delete-stack --stack-name ${{ vars.STACK_NAME }}-${{ vars.ENVIRONMENT }}
+            aws cloudformation wait stack-delete-complete --stack-name ${{ vars.STACK_NAME }}-${{ vars.ENVIRONMENT }}
+            echo "Stack deleted successfully."
+          elif [[ $STACK_STATUS != "STACK_NOT_FOUND" ]]; then
+            echo "Stack exists and is in $STACK_STATUS state."
+          else
+            echo "Stack does not exist yet."
+          fi
+
+      - name: Install AWS SAM CLI
+        if: github.event_name == 'push'
+        run: |
+          pip install aws-sam-cli
+
+      - name: Build with SAM
+        if: github.event_name == 'push'
+        run: |
+          sam build
+
+      - name: Deploy with SAM
+        if: github.event_name == 'push'
+        run: |
+          # Crear una cadena de parámetros en el formato correcto
+          PARAMETERS="Environment=${{ vars.ENVIRONMENT }} "
+          PARAMETERS+="MongoDbUri=${{ secrets.MONGODB_URI }} "
+          PARAMETERS+="DatabaseName=${{ vars.DATABASE_NAME }} "
+          PARAMETERS+="CollectionName=${{ vars.COLLECTION_NAME }} "
+          PARAMETERS+="ApiGatewayType=${{ vars.API_GATEWAY_TYPE }} "
+          PARAMETERS+="ExistingApiId=${{ vars.EXISTING_API_ID }} "
+          PARAMETERS+="ExistingApiStageName=${{ vars.EXISTING_API_STAGE_NAME }} "
+          PARAMETERS+="ExistingVpcId=${{ vars.EXISTING_VPC_ID }} "
+          PARAMETERS+="ExistingSubnetIds=${{ vars.EXISTING_SUBNET_IDS }} "
+          PARAMETERS+="ExistingSecurityGroupId=${{ vars.EXISTING_SECURITY_GROUP_ID }} "
+          PARAMETERS+="ExistingLayerArn=${{ vars.EXISTING_LAYER_ARN }} "
+          
+          # Añadir RootResourceId solo si API_GATEWAY_TYPE es 'rest'
+          if [ "${{ vars.API_GATEWAY_TYPE }}" = "rest" ]; then
+            PARAMETERS+="RootResourceId=${{ vars.ROOT_RESOURCE_ID }} "
+          fi
+          
+          echo "Parámetros: $PARAMETERS"
+          
+          # Ejecutar el comando sam deploy con los parámetros
+          sam deploy --no-confirm-changeset --no-fail-on-empty-changeset \
+            --stack-name ${{ vars.STACK_NAME }}-${{ vars.ENVIRONMENT }} \
+            --resolve-s3 \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --parameter-overrides $PARAMETERS
+
+      # OPCIONAL: Añadir verificación post-despliegue
+      - name: Verify deployment
+        if: github.event_name == 'push'
+        run: |
+          echo "Verificando el despliegue del stack"
+          STACK_STATUS=$(aws cloudformation describe-stacks --stack-name ${{ vars.STACK_NAME }}-${{ vars.ENVIRONMENT }} --query "Stacks[0].StackStatus" --output text)
+          echo "Estado final del stack: $STACK_STATUS"
+          
+          if [[ $STACK_STATUS == "CREATE_COMPLETE" || $STACK_STATUS == "UPDATE_COMPLETE" ]]; then
+            echo "✅ Despliegue exitoso"
+            # Obtener la URL del endpoint de salida si está disponible
+            API_URL=$(aws cloudformation describe-stacks --stack-name ${{ vars.STACK_NAME }}-${{ vars.ENVIRONMENT }} --query "Stacks[0].Outputs[?OutputKey=='ApiEndpoint'].OutputValue" --output text)
+            if [[ ! -z "$API_URL" ]]; then
+              echo "🔗 API URL: $API_URL"
+            fi
+          else
+            echo "❌ Despliegue fallido o en progreso"
+            exit 1
+          fi
