@@ -55,6 +55,12 @@ Parameters:
     Type: String
     Description: ARN de la capa (layer) existente con las dependencias
 
+  # Nuevo parámetro para el rootresourceid
+  RootResourceId:
+    Type: String
+    Default: ""
+    Description: ID del recurso raíz de la API Gateway (solo para REST API)
+
 Resources:
   # Secreto para MongoDB
   MongoDBSecret:
@@ -152,7 +158,7 @@ Resources:
     Condition: IsRestApi
     Properties:
       RestApiId: !Ref ExistingApiId
-      ParentId: !Sub '{{resolve:ssm:/apigateway/${ExistingApiId}/rootresourceid}}'
+      ParentId: !Ref RootResourceId
       PathPart: 'hello'
 
   # Método GET para el recurso /hello en API REST
@@ -186,8 +192,18 @@ Resources:
     DependsOn: ApiGatewayRestMethod
     Properties:
       RestApiId: !Ref ExistingApiId
-      StageName: !Ref ExistingApiStageName
       Description: !Sub 'Deployment for ${AWS::StackName}'
+
+  # Asociación de etapa para API REST (nuevo recurso)
+  ApiGatewayStageAssociation:
+    Type: AWS::ApiGateway::Stage
+    Condition: IsRestApi
+    DependsOn: ApiGatewayDeployment
+    Properties:
+      RestApiId: !Ref ExistingApiId
+      StageName: !Ref ExistingApiStageName
+      DeploymentId: !Ref ApiGatewayDeployment
+      Description: !Sub 'Stage for ${AWS::StackName}'
 
 Conditions:
   IsHttpApi: !Equals [!Ref ApiGatewayType, "http"]

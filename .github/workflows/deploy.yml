@@ -2,9 +2,9 @@ name: Deploy Serverless Application
 
 on:
   push:
-    branches: [master, develop, 'release/*']
+    branches: [main, master, develop, 'release/*']
   pull_request:
-    branches: [master, develop]
+    branches: [main, master, develop]
 
 permissions:
   id-token: write  # Necesario para OIDC
@@ -13,7 +13,7 @@ permissions:
 jobs:
   test-and-deploy:
     runs-on: ubuntu-latest
-    environment: ${{ github.ref == 'refs/heads/master' && 'prod' || github.ref == 'refs/heads/develop' && 'dev' || startsWith(github.ref, 'refs/heads/release/') && 'stage' || 'test' }}
+    environment: ${{ github.ref == 'refs/heads/main' && 'prod' || github.ref == 'refs/heads/develop' && 'dev' || startsWith(github.ref, 'refs/heads/release/') && 'stage' || 'test' }}
 
     steps:
       # Debug para verificar la configuración
@@ -24,7 +24,6 @@ jobs:
           echo "AWS_REGION: ${{ vars.AWS_REGION }}"
           echo "STACK_NAME: ${{ vars.STACK_NAME }}"
           echo "ENVIRONMENT: ${{ vars.ENVIRONMENT }}"
-          echo "EXISTING_LAYER_ARN: ${{ vars.EXISTING_LAYER_ARN }}"
           
           echo "GitHub Context Information:"
           echo "Repository: ${{ github.repository }}"
@@ -56,29 +55,14 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      # Agregar el ROOTRESOURCEID de la API REST al Parameter Store si no existe
-      - name: Check and store API Root Resource ID
+      # Paso para obtener el Root Resource ID si se utiliza API REST
+      - name: Get API Gateway Root Resource ID
         if: github.event_name == 'push' && vars.API_GATEWAY_TYPE == 'rest'
+        id: get-root-id
         run: |
-          # Verificar si ya existe el parámetro en SSM
-          PARAM_EXISTS=$(aws ssm get-parameter --name "/apigateway/${{ vars.EXISTING_API_ID }}/rootresourceid" --query "Parameter.Name" --output text 2>/dev/null || echo "NOT_FOUND")
-          
-          if [[ $PARAM_EXISTS == "NOT_FOUND" ]]; then
-            echo "Parameter not found, retrieving root resource ID from API Gateway"
-            # Obtener el ID del recurso raíz
-            ROOT_RESOURCE_ID=$(aws apigateway get-resources --rest-api-id ${{ vars.EXISTING_API_ID }} --query "items[?path=='/'].id" --output text)
-            
-            if [[ -n "$ROOT_RESOURCE_ID" ]]; then
-              # Guardar el ID en Parameter Store
-              aws ssm put-parameter --name "/apigateway/${{ vars.EXISTING_API_ID }}/rootresourceid" --value "$ROOT_RESOURCE_ID" --type "String"
-              echo "Stored root resource ID: $ROOT_RESOURCE_ID"
-            else
-              echo "Failed to retrieve root resource ID!"
-              exit 1
-            fi
-          else
-            echo "Root resource ID parameter already exists in SSM"
-          fi
+          ROOT_ID=$(aws apigateway get-resources --rest-api-id ${{ vars.EXISTING_API_ID }} --query "items[?path=='/'].id" --output text)
+          echo "ROOT_RESOURCE_ID=$ROOT_ID" >> $GITHUB_OUTPUT
+          echo "Obtained Root Resource ID: $ROOT_ID"
 
       - name: Check and delete failed stack if needed
         if: github.event_name == 'push'
@@ -108,22 +92,43 @@ jobs:
         run: |
           sam build
 
-      - name: Deploy with SAM
-        if: github.event_name == 'push'
+      - name: Deploy with SAM (HTTP API)
+        if: github.event_name == 'push' && vars.API_GATEWAY_TYPE == 'http'
         run: |
           sam deploy --no-confirm-changeset --no-fail-on-empty-changeset \
-          --stack-name ${{ vars.STACK_NAME }}-${{ vars.ENVIRONMENT }} \
-          --resolve-s3 \
-          --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
-          --parameter-overrides \
-          Environment=${{ vars.ENVIRONMENT }} \
-          MongoDbUri=${{ secrets.MONGODB_URI }} \
-          DatabaseName=${{ vars.DATABASE_NAME }} \
-          CollectionName=${{ vars.COLLECTION_NAME }} \
-          ApiGatewayType=${{ vars.API_GATEWAY_TYPE }} \
-          ExistingApiId=${{ vars.EXISTING_API_ID }} \
-          ExistingApiStageName=${{ vars.EXISTING_API_STAGE_NAME }} \
-          ExistingVpcId=${{ vars.EXISTING_VPC_ID }} \
-          ExistingSubnetIds=${{ vars.EXISTING_SUBNET_IDS }} \
-          ExistingSecurityGroupId=${{ vars.EXISTING_SECURITY_GROUP_ID }} \
-          ExistingLayerArn=${{ vars.EXISTING_LAYER_ARN }}
+            --stack-name ${{ vars.STACK_NAME }}-${{ vars.ENVIRONMENT }} \
+            --resolve-s3 \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --parameter-overrides \
+              Environment=${{ vars.ENVIRONMENT }} \
+              MongoDbUri=${{ secrets.MONGODB_URI }} \
+              DatabaseName=${{ vars.DATABASE_NAME }} \
+              CollectionName=${{ vars.COLLECTION_NAME }} \
+              ApiGatewayType=${{ vars.API_GATEWAY_TYPE }} \
+              ExistingApiId=${{ vars.EXISTING_API_ID }} \
+              ExistingApiStageName=${{ vars.EXISTING_API_STAGE_NAME }} \
+              ExistingVpcId=${{ vars.EXISTING_VPC_ID }} \
+              ExistingSubnetIds=${{ vars.EXISTING_SUBNET_IDS }} \
+              ExistingSecurityGroupId=${{ vars.EXISTING_SECURITY_GROUP_ID }} \
+              ExistingLayerArn=${{ vars.EXISTING_LAYER_ARN }}
+
+      - name: Deploy with SAM (REST API)
+        if: github.event_name == 'push' && vars.API_GATEWAY_TYPE == 'rest'
+        run: |
+          sam deploy --no-confirm-changeset --no-fail-on-empty-changeset \
+            --stack-name ${{ vars.STACK_NAME }}-${{ vars.ENVIRONMENT }} \
+            --resolve-s3 \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --parameter-overrides \
+              Environment=${{ vars.ENVIRONMENT }} \
+              MongoDbUri=${{ secrets.MONGODB_URI }} \
+              DatabaseName=${{ vars.DATABASE_NAME }} \
+              CollectionName=${{ vars.COLLECTION_NAME }} \
+              ApiGatewayType=${{ vars.API_GATEWAY_TYPE }} \
+              ExistingApiId=${{ vars.EXISTING_API_ID }} \
+              ExistingApiStageName=${{ vars.EXISTING_API_STAGE_NAME }} \
+              ExistingVpcId=${{ vars.EXISTING_VPC_ID }} \
+              ExistingSubnetIds=${{ vars.EXISTING_SUBNET_IDS }} \
+              ExistingSecurityGroupId=${{ vars.EXISTING_SECURITY_GROUP_ID }} \
+              ExistingLayerArn=${{ vars.EXISTING_LAYER_ARN }} \
+              RootResourceId=${{ steps.get-root-id.outputs.ROOT_RESOURCE_ID }}
