@@ -156,6 +156,8 @@ Resources:
   ApiGatewayRestResource:
     Type: AWS::ApiGateway::Resource
     Condition: IsRestApi
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       RestApiId: !Ref ExistingApiId
       ParentId: !Ref RootResourceId
