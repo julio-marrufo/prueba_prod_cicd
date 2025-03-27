@@ -13,7 +13,7 @@ permissions:
 jobs:
   test-and-deploy:
     runs-on: ubuntu-latest
-    environment: ${{ github.ref == 'refs/heads/main' && 'prod' || github.ref == 'refs/heads/develop' && 'dev' || startsWith(github.ref, 'refs/heads/release/') && 'stage' || 'test' }}
+    environment: ${{ github.ref == 'refs/heads/master' && 'prod' || github.ref == 'refs/heads/develop' && 'dev' || startsWith(github.ref, 'refs/heads/release/') && 'stage' || 'test' }}
 
     steps:
       # Debug para verificar la configuración
