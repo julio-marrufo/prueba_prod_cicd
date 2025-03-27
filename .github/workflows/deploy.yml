@@ -23,8 +23,17 @@ jobs:
           echo "AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}"
           echo "AWS_REGION: ${{ vars.AWS_REGION }}"
           echo "STACK_NAME: ${{ vars.STACK_NAME }}"
-          echo "ENVIRONMENT: ${{ vars.ENVIRONMENT }}"
+          echo "Environment: ${{ vars.ENVIRONMENT }}"
+          echo "DATABASE_NAME: ${{ vars.DATABASE_NAME }}"
+          echo "COLLECTION_NAME: ${{ vars.COLLECTION_NAME }}"
+          echo "API_GATEWAY_TYPE: ${{ vars.API_GATEWAY_TYPE }}"
           echo "EXISTING_API_ID: ${{ vars.EXISTING_API_ID }}"
+          echo "EXISTING_API_STAGE_NAME: ${{ vars.EXISTING_API_STAGE_NAME }}"
+          echo "EXISTING_VPC_ID: ${{ vars.EXISTING_VPC_ID }}"
+          echo "EXISTING_SUBNET_IDS: ${{ vars.EXISTING_SUBNET_IDS }}"
+          echo "EXISTING_SECURITY_GROUP_ID: ${{ vars.EXISTING_SECURITY_GROUP_ID }}"
+          echo "EXISTING_LAYER_ARN: ${{ vars.EXISTING_LAYER_ARN }}"
+          echo "ROOT_RESOURCE_ID: ${{ steps.get-root-id.outputs.ROOT_RESOURCE_ID }}"
           
           echo "GitHub Context Information:"
           echo "Repository: ${{ github.repository }}"
@@ -101,17 +110,7 @@ jobs:
             --resolve-s3 \
             --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
             --parameter-overrides \
-              Environment=${{ vars.ENVIRONMENT }} \
-              MongoDbUri=${{ secrets.MONGODB_URI }} \
-              DatabaseName=${{ vars.DATABASE_NAME }} \
-              CollectionName=${{ vars.COLLECTION_NAME }} \
-              ApiGatewayType=${{ vars.API_GATEWAY_TYPE }} \
-              ExistingApiId=${{ vars.EXISTING_API_ID }} \
-              ExistingApiStageName=${{ vars.EXISTING_API_STAGE_NAME }} \
-              ExistingVpcId=${{ vars.EXISTING_VPC_ID }} \
-              ExistingSubnetIds=${{ vars.EXISTING_SUBNET_IDS }} \
-              ExistingSecurityGroupId=${{ vars.EXISTING_SECURITY_GROUP_ID }} \
-              ExistingLayerArn=${{ vars.EXISTING_LAYER_ARN }}
+              Environment=${{ vars.ENVIRONMENT }} MongoDbUri=${{ secrets.MONGODB_URI }} DatabaseName=${{ vars.DATABASE_NAME }} CollectionName=${{ vars.COLLECTION_NAME }} ApiGatewayType=${{ vars.API_GATEWAY_TYPE }} ExistingApiId=${{ vars.EXISTING_API_ID }} ExistingApiStageName=${{ vars.EXISTING_API_STAGE_NAME }} ExistingVpcId=${{ vars.EXISTING_VPC_ID }} ExistingSubnetIds=${{ vars.EXISTING_SUBNET_IDS }} ExistingSecurityGroupId=${{ vars.EXISTING_SECURITY_GROUP_ID }} ExistingLayerArn=${{ vars.EXISTING_LAYER_ARN }}
 
       - name: Deploy with SAM (REST API)
         if: github.event_name == 'push' && vars.API_GATEWAY_TYPE == 'rest'
@@ -120,16 +119,4 @@ jobs:
             --stack-name ${{ vars.STACK_NAME }}-${{ vars.ENVIRONMENT }} \
             --resolve-s3 \
             --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
-            --parameter-overrides \
-              Environment=${{ vars.ENVIRONMENT }} \
-              MongoDbUri=${{ secrets.MONGODB_URI }} \
-              DatabaseName=${{ vars.DATABASE_NAME }} \
-              CollectionName=${{ vars.COLLECTION_NAME }} \
-              ApiGatewayType=${{ vars.API_GATEWAY_TYPE }} \
-              ExistingApiId=${{ vars.EXISTING_API_ID }} \
-              ExistingApiStageName=${{ vars.EXISTING_API_STAGE_NAME }} \
-              ExistingVpcId=${{ vars.EXISTING_VPC_ID }} \
-              ExistingSubnetIds=${{ vars.EXISTING_SUBNET_IDS }} \
-              ExistingSecurityGroupId=${{ vars.EXISTING_SECURITY_GROUP_ID }} \
-              ExistingLayerArn=${{ vars.EXISTING_LAYER_ARN }} \
-              RootResourceId=${{ steps.get-root-id.outputs.ROOT_RESOURCE_ID }}
+            --parameter-overrides Environment=${{ vars.ENVIRONMENT }} MongoDbUri=${{ secrets.MONGODB_URI }} DatabaseName=${{ vars.DATABASE_NAME }} CollectionName=${{ vars.COLLECTION_NAME }} ApiGatewayType=${{ vars.API_GATEWAY_TYPE }} ExistingApiId=${{ vars.EXISTING_API_ID }} ExistingApiStageName=${{ vars.EXISTING_API_STAGE_NAME }} ExistingVpcId=${{ vars.EXISTING_VPC_ID }} ExistingSubnetIds=${{ vars.EXISTING_SUBNET_IDS }} ExistingSecurityGroupId=${{ vars.EXISTING_SECURITY_GROUP_ID }} ExistingLayerArn=${{ vars.EXISTING_LAYER_ARN }} RootResourceId=${{ steps.get-root-id.outputs.ROOT_RESOURCE_ID }}
