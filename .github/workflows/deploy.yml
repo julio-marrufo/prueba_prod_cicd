@@ -24,6 +24,7 @@ jobs:
           echo "AWS_REGION: ${{ vars.AWS_REGION }}"
           echo "STACK_NAME: ${{ vars.STACK_NAME }}"
           echo "ENVIRONMENT: ${{ vars.ENVIRONMENT }}"
+          echo "EXISTING_LAYER_ARN: ${{ vars.EXISTING_LAYER_ARN }}"
           
           echo "GitHub Context Information:"
           echo "Repository: ${{ github.repository }}"
