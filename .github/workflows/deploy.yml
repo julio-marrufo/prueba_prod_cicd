@@ -64,12 +64,17 @@ jobs:
         run: |
           python -m pytest tests/unit/
 
+      - name: Debug OIDC claims
+        run: |
+          echo "Expected sub format: repo:${{ github.repository }}:ref:${{ github.ref }}"
+
       - name: Configure AWS credentials with OIDC
         if: github.event_name == 'push'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+          mask-aws-account-id: 'no'
 
       # Paso para obtener el Root Resource ID si se utiliza API REST
       - name: Get API Gateway Root Resource ID
