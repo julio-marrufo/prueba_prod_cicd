@@ -37,7 +37,7 @@ def lambda_handler(event, context):
         #asld
         "statusCode": 200,
         "body": json.dumps({
-            "message": "hello world from prod",
+            "message": "hello world for charly",
             # "location": ip.text.replace("\n", "")
         }),
     }
